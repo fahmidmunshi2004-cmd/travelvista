@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny. Add role claims through a trusted Admin SDK process before enabling admin writes.
+    function signedIn() { return request.auth != null; }
+    function isMember() { return signedIn() && request.auth.token.member == true; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+
+    match /publicSettings/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /tours/{tourId} {
+      allow read: if (isAdmin() || (isMember() && (resource.data.status == 'published' || resource.data.published == true)));
+      allow create, update, delete: if isAdmin();
+    }
+    match /friends/{friendId} {
+      allow read: if isAdmin() || (isMember() && resource.data.visibleToMembers == true);
+      allow create, update, delete: if isAdmin();
+    }
+    match /albums/{albumId} {
+      allow read: if (isMember() && resource.data.published == true) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+    match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
+    match /contactSubmissions/{submissionId} {
+      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'subject', 'message', 'createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120
+        && request.resource.data.email is string && request.resource.data.email.size() <= 254
+        && request.resource.data.subject is string && request.resource.data.subject.size() <= 180
+        && request.resource.data.message is string && request.resource.data.message.size() <= 5000;
+      allow read, update, delete: if isAdmin();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
