@@ -21,6 +21,10 @@ service cloud.firestore {
       allow read: if (signedIn() && resource.data.published == true) || isAdmin();
       allow create, update, delete: if isAdmin();
     }
+    match /journalPosts/{postId} {
+      allow read: if (isAdmin() || (signedIn() && resource.data.published == true));
+      allow create, update, delete: if isAdmin();
+    }
     match /expenses/{expenseId} {
       allow read, write: if isAdmin();
     }

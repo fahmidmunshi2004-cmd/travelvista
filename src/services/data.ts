@@ -1,5 +1,5 @@
 import {
-  addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where,
+  addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where,
   type DocumentData,
 } from 'firebase/firestore'
 import { getFirestore } from 'firebase/firestore'
@@ -13,7 +13,7 @@ function database() {
 }
 
 export async function listPublishedTours(): Promise<DocumentData[]> {
-  const result = await getDocs(query(collection(database(), 'tours'), where('status', '==', 'published'), orderBy('startDate', 'desc')))
+  const result = await getDocs(query(collection(database(), 'tours'), where('status', '==', 'published')))
   const tours: DocumentData[] = result.docs.map((item) => ({ id: item.id, ...item.data() }))
   return tours
 }
