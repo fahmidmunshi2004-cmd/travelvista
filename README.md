@@ -19,7 +19,7 @@ Tour তৈরি, সম্পাদনা ও মুছতে শিরোন�
 
 ## সদস্য লগইন ও অ্যাপ অ্যাক্সেস
 
-এখন প্রতিটি route-এর আগে Firebase Auth session যাচাই হয়। Firebase সেটআপ না থাকলে login screen দেখায়, কিন্তু লগইন চালু হয় না। লগইন করা account-এর Firebase custom claim `member: true` অথবা `admin: true` থাকতে হবে; claim না থাকলে account approval বার্তা দেখানো হয় এবং private pages খোলে না। Login screen-এ Email/Password, Google ও Facebook sign-in আছে; self-registration নেই। Authenticated অবস্থায় header-এর Sign out/লগআউট বোতাম দিয়ে বের হওয়া যায়। Firestore rules-এও সদস্য/অ্যাডমিন check আছে, এবং contact submission-এ login বাধ্যতামূলক।
+প্রতিটি route-এর আগে Firebase Auth session যাচাই হয়। লগইন বা account তৈরি না করলে কোনো পেজ খোলে না। Email/Password, Google ও Facebook sign-in এবং Email/Password registration আছে। যেকোনো authenticated user সাধারণ ভ্রমণ পেজ দেখতে পারে; `/admin`-এর সব ব্যবস্থাপনা এবং admin write-এর জন্য `admin: true` custom claim বাধ্যতামূলক। এভাবে login-এর পর “সদস্য অনুমতি নেই” বাধা আসে না, কিন্তু সাধারণ account admin কাজ করতে পারে না। Header-এর লগআউট বোতামে session শেষ হয়।
 
 ### Local demo mode
 
@@ -27,9 +27,9 @@ Firebase config না থাকলে Admin পেজে **Local demo mode** �
 
 ### Firebase / Firestore mode
 
-`.env.example` কপি করে `.env.local` তৈরি করুন এবং Firebase Web App config-এর পাঁচটি প্রয়োজনীয় মান (`apiKey`, `authDomain`, `projectId`, `messagingSenderId`, `appId`) দিন। `storageBucket` optional; এটি শুধু Firebase Storage ব্যবহার করলে লাগবে। Firebase config থাকলে Admin পেজ Firebase Auth-এর `admin: true` custom claim যাচাই করে। অনুমতি না থাকলে নিয়ন্ত্রণ-প্যানেল বন্ধ থাকে। ট্যুর, বন্ধু, অ্যালবাম ও খরচ পড়তে এবং ট্যুর create/update/delete করতে Firestore rules-ও `admin` claim যাচাই করে। Configured Firebase-এ network/rules/auth ত্রুটি হলে error দেখানো হয়; ডেটা localStorage-এ সরিয়ে লেখা হয় না।
+`.env.example` কপি করে `.env.local` তৈরি করুন এবং Firebase Web App config-এর পাঁচটি প্রয়োজনীয় মান (`apiKey`, `authDomain`, `projectId`, `messagingSenderId`, `appId`) দিন। `storageBucket` optional। Vercel-এ deploy করলে এই একই `VITE_FIREBASE_*` values Project Settings → Environment Variables-এ যোগ করতে হবে; `.env.local` Git/Vercel-এ upload হয় না। Firebase Auth-এ deployed Vercel domain-টিও Authorized domains-এ যোগ করুন. Configured Firebase-এ network/rules/auth error হলে error দেখায়; ডেটা localStorage-এ সরিয়ে লেখা হয় না।
 
-Firebase CLI-তে **Firestore** feature বাছুন। `firebase.json` `firestore.rules`-কে rules file হিসেবে যুক্ত করে, Hosting-এর জন্য `dist` এবং SPA rewrite সেট করে; `.firebaserc` project-টি `travelvista-87201` হিসেবে নির্বাচন করে। Firestore Console-এ database আগে তৈরি না থাকলে তৈরি করুন। Deploy করতে `npm run build`-এর পর `firebase deploy --only firestore:rules,hosting` চালান। Storage upload এই phase-এ configure করা হয়নি।
+Vercel frontend hosting করে; Firebase Hosting দরকার নেই। `firebase.json` Firestore ও Storage rules file যুক্ত করে। Backend rules deploy করতে `npm run build`-এর পর `firebase deploy --only firestore:rules,storage --project travelvista-87201` চালান।
 
 Firestore collections:
 
@@ -44,7 +44,7 @@ Firestore collections:
 
 1. Firebase Console-এ Authentication-এ Email/Password, Google/Facebook এবং অনুমোদিত domains সেট করুন। Provider চালু না করা পর্যন্ত social login কাজ করবে না।
 2. Firestore ও Storage তৈরি করে `firestore.rules` এবং `storage.rules` deploy করুন।
-3. প্রথম অ্যাডমিন ব্যবহারকারীর custom claim `admin: true` এবং অনুমোদিত সদস্যদের `member: true` Firebase Admin SDK-সহ বিশ্বস্ত server environment থেকে দিন। অ্যাডমিন claim-ও অ্যাপের সদস্য প্রবেশাধিকার দেয়। ক্লায়েন্টে claim দেওয়ার code নেই—এটি ইচ্ছাকৃত; কোনো user-editable field-কে admin অনুমতি ধরা হয় না।
+3. প্রথম অ্যাডমিন ব্যবহারকারীর custom claim `admin: true` Firebase Admin SDK-সহ বিশ্বস্ত server environment থেকে দিন। ক্লায়েন্টে claim দেওয়ার code নেই—এটি ইচ্ছাকৃত; কোনো user-editable field-কে admin অনুমতি ধরা হয় না।
 4. `admin` claim পরিবর্তনের পর নতুন ID token নিতে পুনরায় sign-in করুন।
 
 কোনো service-account key বা OAuth secret `.env.local`/frontend code-এ রাখবেন না। Firebase auth, Firestore rules এবং OAuth credentials সেট না থাকলে প্রকৃত cloud operation যাচাই করা সম্ভব নয়।
@@ -55,3 +55,7 @@ Firestore collections:
 - Admin CRUD-এর বাইরে পূর্ণ Friends/Albums management এবং per-tour expense entry UI।
 - Firestore admin access-এর rules emulator test; Firebase project ও emulator configuration দেওয়া হয়নি।
 - Automated test script; বর্তমান `package.json`-এ test command নেই।
+
+## ছবি attribution
+
+Login ও home hero-তে ব্যবহৃত Rangamati sunset photograph: [Anvil Chakma / Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Sunset_at_Rangamati_2018.jpg), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).

@@ -1,5 +1,6 @@
 import {
-  createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword,
+  browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword,
+  sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword,
   signInWithPopup, signOut, updateProfile, type UserCredential,
 } from 'firebase/auth'
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth'
@@ -10,6 +11,7 @@ function configuredAuth() {
 }
 
 const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({ prompt: 'select_account' })
 const facebookProvider = new FacebookAuthProvider()
 
 export async function registerWithEmail(name: string, email: string, password: string): Promise<UserCredential> {
@@ -18,16 +20,22 @@ export async function registerWithEmail(name: string, email: string, password: s
   return result
 }
 
-export function loginWithEmail(email: string, password: string) {
-  return signInWithEmailAndPassword(configuredAuth(), email.trim(), password)
+export async function loginWithEmail(email: string, password: string, remember = true) {
+  const auth = configuredAuth()
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence)
+  return signInWithEmailAndPassword(auth, email.trim(), password)
 }
 
-export function loginWithGoogle() {
-  return signInWithPopup(configuredAuth(), googleProvider)
+export async function loginWithGoogle(remember = true) {
+  const auth = configuredAuth()
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence)
+  return signInWithPopup(auth, googleProvider)
 }
 
-export function loginWithFacebook() {
-  return signInWithPopup(configuredAuth(), facebookProvider)
+export async function loginWithFacebook(remember = true) {
+  const auth = configuredAuth()
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence)
+  return signInWithPopup(auth, facebookProvider)
 }
 
 export function requestPasswordReset(email: string) {
