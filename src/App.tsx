@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Camera, ChevronDown, Compass, Heart, Image, MapPin, Menu, Moon, Plus, Search, Settings2, Sun, Users, Wallet, X } from 'lucide-react'
 import AdminToursPage from './features/admin/AdminToursPage'
-
-const firebaseConfigured = Boolean(import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_AUTH_DOMAIN && import.meta.env.VITE_FIREBASE_PROJECT_ID && import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID && import.meta.env.VITE_FIREBASE_APP_ID)
+import { firebaseConfigured, requireFirebaseApp } from './services/firebaseApp'
 
 type Trip = { id: number | string; title: string; place: string; date: string; count: number; color: string; image: string; description: string; cost: number }
 type Friend = { name: string; nickname: string; initials: string; trips: number; color: string }
@@ -29,15 +28,51 @@ const bn = {
 }
 type Copy = typeof bn
 const getStored = <T,>(key: string, fallback: T): T => { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) as T : fallback } catch { return fallback } }
+const getInitialTheme = () => {
+  if (!localStorage.getItem('tv-theme-initialized')) {
+    localStorage.setItem('tv-dark', JSON.stringify(false))
+    localStorage.setItem('tv-theme-initialized', '1')
+    return false
+  }
+  return getStored('tv-dark', false)
+}
 
 function App() {
   const [language, setLanguage] = useState<'bn'|'en'>(() => getStored('tv-language', 'bn'))
-  const [dark, setDark] = useState(() => getStored('tv-dark', true))
+  const [dark, setDark] = useState(getInitialTheme)
+  const [access, setAccess] = useState<'checking'|'member'|'signed-out'|'denied'|'unconfigured'|'error'>('checking')
   const [trips, setTrips] = useState<Trip[]>(() => getStored('tv-trips', initialTrips))
   const [search, setSearch] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const t: Copy = language === 'bn' ? bn : en
   const location = useLocation()
+  useEffect(() => {
+    if (!firebaseConfigured) {
+      setAccess('unconfigured')
+      return
+    }
+    let active = true
+    let unsubscribe: (() => void) | undefined
+    void import('firebase/auth').then(({ getAuth, onAuthStateChanged }) => {
+      if (!active) return
+      try {
+        const auth = getAuth(requireFirebaseApp())
+        unsubscribe = onAuthStateChanged(auth, user => {
+          if (!active) return
+          if (!user) {
+            setAccess('signed-out')
+            return
+          }
+          void user.getIdTokenResult().then(({ claims }) => {
+            if (active) setAccess(claims.member === true || claims.admin === true ? 'member' : 'denied')
+          }).catch(() => { if (active) setAccess('error') })
+        }, () => { if (active) setAccess('error') })
+      } catch {
+        setAccess('error')
+      }
+    }).catch(() => { if (active) setAccess('error') })
+    return () => { active = false; unsubscribe?.() }
+  }, [])
   useEffect(() => {
     const refreshLegacyTrips = () => setTrips(getStored('tv-trips', initialTrips))
     window.addEventListener('tv-tours-updated', refreshLegacyTrips)
@@ -47,11 +82,16 @@ function App() {
     document.documentElement.lang = language
     document.title = language === 'bn' ? 'TravelVista — আমাদের পথচলা, আমাদের স্মৃতি' : 'TravelVista — Our Journeys, Our Memories'
   }, [language])
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+  }, [dark])
   const filtered = useMemo(() => trips.filter((trip) => `${trip.title} ${trip.place}`.toLowerCase().includes(search.toLowerCase())), [trips, search])
   const toggleLanguage = () => { const next = language === 'bn' ? 'en' : 'bn'; setLanguage(next); localStorage.setItem('tv-language', JSON.stringify(next)) }
   const toggleDark = () => { const next = !dark; setDark(next); localStorage.setItem('tv-dark', JSON.stringify(next)) }
+  if (access !== 'member') return <div className={`site ${dark ? 'dark' : 'light'}`}><AccessWall language={language} access={access} dark={dark} toggleDark={toggleDark} toggleLanguage={toggleLanguage}/></div>
   return <div className={`site ${dark ? 'dark' : 'light'}`}>
-    <Header t={t} toggleLanguage={toggleLanguage} dark={dark} toggleDark={toggleDark} menuOpen={menuOpen} setMenuOpen={setMenuOpen} active={location.pathname} />
+    <Header t={t} language={language} toggleLanguage={toggleLanguage} dark={dark} toggleDark={toggleDark} menuOpen={menuOpen} setMenuOpen={setMenuOpen} active={location.pathname} />
     <Routes>
       <Route path="/" element={<Home t={t} trips={filtered} friends={friends} />} />
       <Route path="/journeys" element={<Journeys t={t} trips={filtered} search={search} setSearch={setSearch} />} />
@@ -70,9 +110,17 @@ function App() {
   </div>
 }
 
-function Header({ t, toggleLanguage, dark, toggleDark, menuOpen, setMenuOpen, active }: { t: Copy; toggleLanguage: () => void; dark: boolean; toggleDark: () => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void; active: string }) {
+function Header({ t, language, toggleLanguage, dark, toggleDark, menuOpen, setMenuOpen, active }: { t: Copy; language: 'bn'|'en'; toggleLanguage: () => void; dark: boolean; toggleDark: () => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void; active: string }) {
   const links = ['/','/journeys','/friends','/journal','/gallery']
-  return <header className="header"><div className="nav-wrap wrap"><Link to="/" className="brand"><img src="/assets/img/logo-optimized.png" alt="TravelVista"/><span>Travel<span className="pink">Vista</span><small>{t.private}</small></span></Link><button className="icon-button menu-toggle" aria-label="Open menu" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X/> : <Menu/>}</button><nav className={menuOpen ? 'nav-links open' : 'nav-links'}>{t.nav.map((label, index) => <Link key={label} onClick={() => setMenuOpen(false)} className={active === links[index] || (index === 1 && active.startsWith('/journeys/')) ? 'active' : ''} to={links[index]}>{label}</Link>)}</nav><div className="nav-actions"><button className="lang-button" onClick={toggleLanguage}>{t.language} <ChevronDown size={14}/></button><button className="icon-button" onClick={toggleDark} aria-label="Toggle theme">{dark ? <Sun size={17}/> : <Moon size={17}/>}</button><Link className="nav-admin" to="/admin"><Settings2 size={15}/>{t.admin}</Link></div></div></header>
+  return <header className="header"><div className="nav-wrap wrap"><Link to="/" className="brand"><img src="/assets/img/logo-optimized.png" alt="TravelVista"/><span>Travel<span className="pink">Vista</span><small>{t.private}</small></span></Link><button className="icon-button menu-toggle" aria-label="Open menu" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X/> : <Menu/>}</button><nav className={menuOpen ? 'nav-links open' : 'nav-links'}>{t.nav.map((label, index) => <Link key={label} onClick={() => setMenuOpen(false)} className={active === links[index] || (index === 1 && active.startsWith('/journeys/')) ? 'active' : ''} to={links[index]}>{label}</Link>)}</nav><div className="nav-actions"><button className="lang-button" onClick={toggleLanguage}>{t.language} <ChevronDown size={14}/></button><button className="icon-button" onClick={toggleDark} aria-label="Toggle theme">{dark ? <Sun size={17}/> : <Moon size={17}/>}</button><Link className="nav-admin" to="/admin"><Settings2 size={15}/>{t.admin}</Link><button className="nav-admin sign-out-button" onClick={()=>void import('./services/auth').then(({logout})=>logout())}>{language==='bn'?'লগআউট':'Sign out'}</button></div></div></header>
+}
+function AccessWall({language,access,dark,toggleDark,toggleLanguage}:{language:'bn'|'en';access:'checking'|'member'|'signed-out'|'denied'|'unconfigured'|'error';dark:boolean;toggleDark:()=>void;toggleLanguage:()=>void}){
+  const isBn=language==='bn';const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [status,setStatus]=useState('');const [busy,setBusy]=useState(false)
+  const perform=async(action:()=>Promise<unknown>)=>{setStatus('');setBusy(true);try{await action()}catch(error){setStatus(error instanceof Error?error.message:(isBn?'লগইন করা যায়নি।':'Sign-in failed.'))}finally{setBusy(false)}}
+  const submit=(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();void perform(()=>import('./services/auth').then(({loginWithEmail})=>loginWithEmail(email,password)))}
+  const logout=()=>void import('./services/auth').then(({logout})=>logout()).catch(()=>setStatus(isBn?'লগআউট করা যায়নি।':'Could not sign out.'))
+  const unavailable=access==='unconfigured'||access==='error'
+  return <main className="auth-wall"><section className="auth-shell"><div className="auth-landscape"><Link to="/" className="auth-brand"><img src="/assets/img/logo-optimized.png" alt=""/><span>Travel<span>Vista</span></span></Link><div className="auth-landscape-copy"><span>PRIVATE FRIENDS TRAVEL JOURNAL</span><h2>{isBn?'একসাথে পথচলা,':'Same people,'}<br/>{isBn?'স্মৃতির গল্প।':'new memories.'}</h2><p>{isBn?'শুধু আমাদের বন্ধুদের জন্য তৈরি ব্যক্তিগত ভ্রমণ-জার্নাল।':'A private travel journal made for our friends.'}</p></div><div className="auth-scenic-note">TRAVEL · LAUGH · REMEMBER</div></div><section className="auth-panel"><div className="auth-tools"><button type="button" onClick={toggleLanguage}>{isBn?'EN':'বাংলা'}</button><button type="button" onClick={toggleDark}>{dark?(isBn?'লাইট মোড':'Light mode'):(isBn?'ডার্ক মোড':'Dark mode')}</button></div><div className="auth-form-content"><span className="auth-kicker">{isBn?'বন্ধুদের ব্যক্তিগত এলাকা':'PRIVATE MEMBERS AREA'}</span><h1>{isBn?'আবার স্বাগতম 👋':'Welcome back 👋'}</h1><p>{isBn?'আপনার অ্যাকাউন্টে লগইন করে আমাদের স্মৃতিগুলো দেখুন।':'Sign in to continue to our private travel memories.'}</p>{access==='denied'&&<div className="auth-notice">{isBn?'এই অ্যাকাউন্টে এখনো সদস্য অনুমতি নেই। অ্যাডমিন অনুমোদনের পর আবার লগইন করুন।':'This account is not approved for the private group yet. Ask an administrator to approve your membership.'}<button type="button" onClick={logout}>{isBn?'অন্য অ্যাকাউন্ট ব্যবহার করুন':'Use another account'}</button></div>}{access==='checking'&&<p className="auth-status">{isBn?'অ্যাক্সেস যাচাই হচ্ছে…':'Checking your access…'}</p>}<form className="auth-form" onSubmit={submit}><label>{isBn?'ইমেইল':'Email'}<input type="email" autoComplete="username" value={email} onChange={event=>setEmail(event.target.value)} required/></label><label>{isBn?'পাসওয়ার্ড':'Password'}<input type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)} required/></label><button className="auth-submit" disabled={busy||access==='checking'||unavailable}>{busy?(isBn?'লগইন হচ্ছে…':'Signing in…'):(isBn?'লগইন করুন':'Sign in')}<ArrowRight size={17}/></button></form><button className="auth-provider" disabled={busy||access==='checking'||unavailable} onClick={()=>void perform(()=>import('./services/auth').then(({loginWithGoogle})=>loginWithGoogle()))}>{isBn?'Google দিয়ে চালিয়ে যান':'Continue with Google'}</button><button className="auth-provider" disabled={busy||access==='checking'||unavailable} onClick={()=>void perform(()=>import('./services/auth').then(({loginWithFacebook})=>loginWithFacebook()))}>{isBn?'Facebook দিয়ে চালিয়ে যান':'Continue with Facebook'}</button>{unavailable&&<p className="auth-error">{access==='unconfigured'?(isBn?'Firebase সেটআপ না হওয়া পর্যন্ত লগইন চালু হবে না। .env.local-এ Firebase config দিন।':'Login is unavailable until Firebase is configured in .env.local.'):(isBn?'Firebase-এ সংযোগ করা যায়নি। পরে আবার চেষ্টা করুন।':'Could not connect to Firebase. Please try again.')}</p>}{status&&<p className="auth-error" role="alert">{status}</p>}<p className="auth-footnote">{isBn?'শুধু অ্যাডমিন অনুমোদিত সদস্যরা প্রবেশ করতে পারবেন।':'Only administrator-approved members can enter.'}</p></div></section></section></main>
 }
 function Home({ t, trips, friends }: {t:Copy; trips:Trip[]; friends:Friend[]}) {
   return <main><section className="hero"><div className="hero-photo"/><div className="hero-noise"/><div className="wrap hero-content"><motion.div initial={{opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{duration:.7}} className="hero-copy"><div className="eyebrow"><span className="eyebrow-line"/>{t.heroEyebrow}</div><h1>{t.heroTitle}</h1><p>{t.heroText}</p><div className="hero-actions"><Link className="button button-pink" to="/journeys">{t.heroCta}<ArrowRight size={17}/></Link><Link className="button button-ghost" to="/friends"><Users size={16}/>{t.secondary}</Link></div><div className="hero-proof"><div className="avatar-stack">{friends.slice(0,4).map(f=><i key={f.name} style={{background:f.color}}>{f.initials}</i>)}</div><span><b>{languageAwareNumber(t)}</b> {t.moments}</span></div></motion.div><div className="hero-note"><span>01 / 03</span><i/><span>{t.demo}</span></div></div><a href="#journeys" className="scroll-cue"><ArrowDown size={15}/></a></section>

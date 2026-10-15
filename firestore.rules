@@ -7,7 +7,7 @@ service cloud.firestore {
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
 
     match /publicSettings/{document} {
-      allow read: if true;
+      allow read: if isMember() || isAdmin();
       allow write: if isAdmin();
     }
     match /tours/{tourId} {
@@ -26,7 +26,8 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
     match /contactSubmissions/{submissionId} {
-      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'subject', 'message', 'createdAt'])
+      allow create: if (isMember() || isAdmin())
+        && request.resource.data.keys().hasAll(['name', 'email', 'subject', 'message', 'createdAt'])
         && request.resource.data.name is string && request.resource.data.name.size() <= 120
         && request.resource.data.email is string && request.resource.data.email.size() <= 254
         && request.resource.data.subject is string && request.resource.data.subject.size() <= 180
