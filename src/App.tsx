@@ -132,7 +132,7 @@ function App() {
       }
     }).catch(() => { if (active) setAccess('error') })
     return () => { active = false; unsubscribe?.() }
-  }, [])
+  }, [location.pathname])
   useEffect(() => {
     const refreshLegacyTrips = () => setTrips(getStored('tv-trips', initialTrips))
     window.addEventListener('tv-tours-updated', refreshLegacyTrips)
